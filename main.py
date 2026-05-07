@@ -6,7 +6,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from loguru import logger
 
 from app.core.config import settings
-from app.core.logging import setup_logging
+from app.core.logger import setup_logging
 from app.core.database import init_db, check_db_connection
 from app.services.opensky_client import opensky_client
 from app.services.poller import poller
