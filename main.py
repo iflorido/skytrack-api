@@ -8,6 +8,7 @@ from loguru import logger
 from app.core.config import settings
 from app.core.logger import setup_logging
 from app.core.database import init_db, check_db_connection
+from app.core.security import SecurityMiddleware
 from app.services.opensky_client import opensky_client
 from app.services.poller import poller
 from app.services.websocket_manager import ws_manager
@@ -16,25 +17,34 @@ from app.routers import states, flights, tracks, health
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Gestiona el ciclo de vida de la aplicación."""
     setup_logging()
     logger.info(f"Arrancando {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Entorno: {settings.ENVIRONMENT}")
 
+    # Verificar conexión a BD
     if not await check_db_connection():
         logger.error("No se puede conectar a la base de datos — abortando")
         raise RuntimeError("Database connection failed")
 
+    # Inicializar tablas y TimescaleDB hypertables
     await init_db()
+
+    # Iniciar cliente OpenSky
     await opensky_client.start()
+
+    # Iniciar poller (comienza a obtener datos inmediatamente)
     await poller.start()
 
+    # Tarea de heartbeat para WebSockets
     heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
     logger.info("SkyTrack API lista para recibir conexiones ✓")
-    logger.info("Docs disponibles en: /docs")
+    logger.info(f"Docs disponibles en: /docs")
 
-    yield
+    yield  # ← aplicación corriendo
 
+    # Shutdown
     logger.info("Apagando SkyTrack API...")
     heartbeat_task.cancel()
     await poller.stop()
@@ -43,12 +53,14 @@ async def lifespan(app: FastAPI):
 
 
 async def _heartbeat_loop():
+    """Envía ping a todos los WebSocket conectados cada 30s."""
     while True:
         await asyncio.sleep(settings.WS_HEARTBEAT_INTERVAL)
         if ws_manager.connection_count > 0:
             await ws_manager.broadcast_ping()
 
 
+# ── Crear aplicación ─────────────────────────────────────────────────
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
@@ -57,11 +69,17 @@ app = FastAPI(
 
 API en tiempo real para rastreo de aeronaves usando datos de **OpenSky Network**.
 
+### Características
+- **WebSocket live** — recibe posiciones de ~10.000 aeronaves cada 10 segundos
+- **REST endpoints** — consulta estados, vuelos, trayectorias y estadísticas
+- **Histórico** — datos persistidos en PostgreSQL con TimescaleDB
+- **Filtros geográficos** — bounding box para zonas específicas
+
 ### Endpoints principales
-- `WS /api/v1/states/live` — stream en tiempo real
-- `GET /api/v1/states/current` — snapshot actual con filtros
-- `GET /api/v1/flights/*` — vuelos históricos
-- `GET /api/v1/tracks/{icao24}` — trayectoria de una aeronave
+- `WS /states/live` — stream en tiempo real
+- `GET /states/current` — snapshot actual con filtros
+- `GET /flights/*` — vuelos históricos
+- `GET /tracks/{icao24}` — trayectoria de una aeronave
     """,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -69,6 +87,9 @@ API en tiempo real para rastreo de aeronaves usando datos de **OpenSky Network**
 )
 
 # ── Middleware ────────────────────────────────────────────────────────
+# Orden importante: Security primero, luego CORS
+app.add_middleware(SecurityMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
