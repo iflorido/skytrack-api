@@ -8,6 +8,7 @@ from loguru import logger
 from app.core.config import settings
 from app.core.logger import setup_logging
 from app.core.database import init_db, check_db_connection
+from app.core.security import SecurityMiddleware
 from app.services.opensky_client import opensky_client
 from app.services.poller import poller
 from app.services.websocket_manager import ws_manager
@@ -86,6 +87,9 @@ API en tiempo real para rastreo de aeronaves usando datos de **OpenSky Network**
 )
 
 # ── Middleware ────────────────────────────────────────────────────────
+# Orden importante: Security primero, luego CORS
+app.add_middleware(SecurityMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
