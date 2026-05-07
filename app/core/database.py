@@ -42,6 +42,7 @@ async def get_db() -> AsyncSession:
 async def init_db():
     """Crea las tablas y convierte las relevantes en hypertables de TimescaleDB."""
     async with engine.begin() as conn:
+
         # Crear todas las tablas definidas en los modelos
         await conn.run_sync(Base.metadata.create_all)
 
@@ -65,16 +66,39 @@ async def init_db():
             );
         """))
 
-        # Política de compresión automática para state_vectors (> 7 días)
+        # Habilitar columnstore (compresión) en state_vectors
+        # En TimescaleDB 2.x hay que habilitarlo antes de añadir la política
         await conn.execute(text("""
-            SELECT add_compression_policy(
+            ALTER TABLE state_vectors SET (
+                timescaledb.enable_columnstore = true
+            );
+        """))
+
+        # Política de compresión automática (> 7 días)
+        await conn.execute(text("""
+            SELECT add_columnstore_policy(
                 'state_vectors',
-                INTERVAL '7 days',
+                after => INTERVAL '7 days',
                 if_not_exists => TRUE
             );
         """))
 
-        # Política de retención: borrar datos > 30 días para no saturar disco
+        # Habilitar columnstore en flight_tracks
+        await conn.execute(text("""
+            ALTER TABLE flight_tracks SET (
+                timescaledb.enable_columnstore = true
+            );
+        """))
+
+        await conn.execute(text("""
+            SELECT add_columnstore_policy(
+                'flight_tracks',
+                after => INTERVAL '7 days',
+                if_not_exists => TRUE
+            );
+        """))
+
+        # Política de retención: borrar datos > 30 días
         await conn.execute(text("""
             SELECT add_retention_policy(
                 'state_vectors',
