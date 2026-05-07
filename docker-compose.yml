@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  skytrack-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: skytrack-api
+    restart: unless-stopped
+    ports:
+      - "8064:8064"
+    environment:
+      # Base de datos (apunta al host donde corre PostgreSQL)
+      DB_HOST: host.docker.internal   # En Linux usar la IP del host: 172.17.0.1
+      DB_PORT: 5432
+      DB_NAME: admin_skytrack_db
+      DB_USER: admin_userflyskytrack
+      DB_PASSWORD: ${DB_PASSWORD}     # Pasar como variable de entorno externa
+
+      # OpenSky (opcionales — sin ellas funciona en modo anónimo)
+      OPENSKY_CLIENT_ID: ${OPENSKY_CLIENT_ID:-}
+      OPENSKY_CLIENT_SECRET: ${OPENSKY_CLIENT_SECRET:-}
+
+      # App
+      ENVIRONMENT: production
+      DEBUG: "false"
+      POLL_INTERVAL_SECONDS: 10
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Permite al contenedor acceder a PostgreSQL del host
+
+    volumes:
+      - skytrack_logs:/app/logs
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8064/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  skytrack_logs:
+    driver: local
