@@ -43,16 +43,20 @@ class Settings(BaseSettings):
 
     @property
     def DATABASE_URL(self) -> str:
+        from urllib.parse import quote_plus
+        password = quote_plus(self.DB_PASSWORD)
         return (
-            f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}"
+            f"postgresql+asyncpg://{self.DB_USER}:{password}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
 
     @property
     def DATABASE_URL_SYNC(self) -> str:
         """Para Alembic (síncrono)"""
+        from urllib.parse import quote_plus
+        password = quote_plus(self.DB_PASSWORD)
         return (
-            f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASSWORD}"
+            f"postgresql+psycopg2://{self.DB_USER}:{password}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
 
