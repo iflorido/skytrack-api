@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, String, Float, Boolean, Integer,
-    BigInteger, Text, DateTime, Index, UniqueConstraint
+    BigInteger, Text, DateTime, Index, UniqueConstraint, PrimaryKeyConstraint
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
@@ -11,52 +11,42 @@ class StateVector(Base):
     """
     Posición y estado de cada aeronave en tiempo real.
     Hypertable de TimescaleDB particionada por time_position.
+    SQLAlchemy requiere PK — usamos clave compuesta icao24 + time_position.
     """
     __tablename__ = "state_vectors"
 
-    # Clave compuesta: icao24 + timestamp (sin PK autoincremental en hypertables)
-    icao24 = Column(String(6), nullable=False, index=True)
-    time_position = Column(BigInteger, nullable=False)        # Unix timestamp (PK temporal)
+    icao24 = Column(String(6), nullable=False)
+    time_position = Column(BigInteger, nullable=False)
 
-    # Identificación
     callsign = Column(String(8), nullable=True)
     origin_country = Column(String(100), nullable=True)
 
-    # Posición
     longitude = Column(Float, nullable=True)
     latitude = Column(Float, nullable=True)
-    baro_altitude = Column(Float, nullable=True)              # metros
-    geo_altitude = Column(Float, nullable=True)               # metros
+    baro_altitude = Column(Float, nullable=True)
+    geo_altitude = Column(Float, nullable=True)
     on_ground = Column(Boolean, nullable=False, default=False)
 
-    # Movimiento
-    velocity = Column(Float, nullable=True)                   # m/s
-    true_track = Column(Float, nullable=True)                 # grados desde norte
-    vertical_rate = Column(Float, nullable=True)              # m/s (+subiendo, -bajando)
+    velocity = Column(Float, nullable=True)
+    true_track = Column(Float, nullable=True)
+    vertical_rate = Column(Float, nullable=True)
 
-    # Transponder
     squawk = Column(String(4), nullable=True)
-    spi = Column(Boolean, nullable=True)                      # Special Purpose Indicator
-    position_source = Column(Integer, nullable=True)          # 0=ADS-B,1=ASTERIX,2=MLAT,3=FLARM
-    category = Column(Integer, nullable=True)                 # categoría aeronave (0-20)
+    spi = Column(Boolean, nullable=True)
+    position_source = Column(Integer, nullable=True)
+    category = Column(Integer, nullable=True)
 
-    # Meta
     last_contact = Column(BigInteger, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
-        Index("ix_state_vectors_icao24_time", "icao24", "time_position"),
+        PrimaryKeyConstraint("icao24", "time_position"),
+        Index("ix_state_vectors_icao24", "icao24"),
         Index("ix_state_vectors_time", "time_position"),
-        # TimescaleDB requiere que time_position esté en la PK si se usa PK
-        {"timescaledb_hypertable": False},                    # se gestiona en init_db()
     )
 
 
 class Aircraft(Base):
-    """
-    Información estática de aeronaves conocidas.
-    Se actualiza cuando se detecta nueva info.
-    """
     __tablename__ = "aircraft"
 
     icao24 = Column(String(6), primary_key=True)
@@ -77,7 +67,6 @@ class Aircraft(Base):
     engines = Column(String(50), nullable=True)
     country = Column(String(100), nullable=True)
 
-    # Último estado conocido (desnormalización para acceso rápido)
     last_seen = Column(BigInteger, nullable=True)
     last_callsign = Column(String(8), nullable=True)
     last_latitude = Column(Float, nullable=True)
@@ -91,24 +80,18 @@ class Aircraft(Base):
 
 
 class Flight(Base):
-    """
-    Vuelos completos con origen, destino y horarios.
-    Datos del endpoint /flights de OpenSky.
-    """
     __tablename__ = "flights"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     icao24 = Column(String(6), nullable=False, index=True)
     callsign = Column(String(8), nullable=True)
 
-    # Origen
     first_seen = Column(BigInteger, nullable=False)
-    est_departure_airport = Column(String(10), nullable=True)  # ICAO
+    est_departure_airport = Column(String(10), nullable=True)
     departure_airport_candidates = Column(JSONB, nullable=True)
 
-    # Destino
     last_seen = Column(BigInteger, nullable=False)
-    est_arrival_airport = Column(String(10), nullable=True)    # ICAO
+    est_arrival_airport = Column(String(10), nullable=True)
     arrival_airport_candidates = Column(JSONB, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -122,13 +105,9 @@ class Flight(Base):
 
 
 class FlightTrack(Base):
-    """
-    Trayectorias (waypoints) de vuelos individuales.
-    Hypertable de TimescaleDB particionada por timestamp.
-    """
     __tablename__ = "flight_tracks"
 
-    icao24 = Column(String(6), nullable=False, index=True)
+    icao24 = Column(String(6), nullable=False)
     timestamp = Column(BigInteger, nullable=False)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
@@ -137,14 +116,12 @@ class FlightTrack(Base):
     on_ground = Column(Boolean, nullable=True)
 
     __table_args__ = (
-        Index("ix_flight_tracks_icao24_ts", "icao24", "timestamp"),
+        PrimaryKeyConstraint("icao24", "timestamp"),
+        Index("ix_flight_tracks_icao24", "icao24"),
     )
 
 
 class Airport(Base):
-    """
-    Información de aeropuertos para enrichment de datos.
-    """
     __tablename__ = "airports"
 
     icao = Column(String(10), primary_key=True)
@@ -154,10 +131,9 @@ class Airport(Base):
     country = Column(String(100), nullable=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
-    altitude = Column(Integer, nullable=True)                  # pies sobre nivel del mar
+    altitude = Column(Integer, nullable=True)
     timezone = Column(String(50), nullable=True)
 
-    # Estadísticas actualizadas en tiempo real
     active_arrivals = Column(Integer, default=0)
     active_departures = Column(Integer, default=0)
 
@@ -166,9 +142,6 @@ class Airport(Base):
 
 
 class PollerStats(Base):
-    """
-    Estadísticas del poller para monitorización interna.
-    """
     __tablename__ = "poller_stats"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
