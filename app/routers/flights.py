@@ -95,3 +95,36 @@ async def get_flight_info(callsign: str):
                    "Puede que el callsign no sea reconocido por AviationStack o se haya agotado el límite mensual."
         )
     return result
+
+
+@router.get(
+    "/origin-destination/{icao24}",
+    summary="Origen y destino calculados desde nuestra BD",
+    description="Calcula el aeropuerto de origen y destino buscando "
+                "las primeras/últimas posiciones del avión en nuestra BD "
+                "y comparándolas con nuestra base de aeropuertos (OurAirports).",
+)
+async def get_origin_destination(
+    icao24: str,
+    hours: int = Query(12, description="Horas de histórico a analizar", ge=1, le=24),
+):
+    from app.services.airports_updater import get_flight_origin_destination
+    result = await get_flight_origin_destination(icao24.lower(), hours)
+    if not result["origin"] and not result["destination"]:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No hay suficientes datos para calcular origen/destino de {icao24}"
+        )
+    return result
+
+
+@router.post(
+    "/airports/update",
+    summary="Forzar actualización manual de aeropuertos",
+    description="Descarga el CSV de OurAirports y actualiza la BD. "
+                "Se ejecuta automáticamente cada semana.",
+)
+async def force_airports_update():
+    from app.services.airports_updater import update_airports_from_csv
+    result = await update_airports_from_csv()
+    return result
