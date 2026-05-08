@@ -6,21 +6,27 @@ from app.core.config import settings
 
 PUBLIC_PATHS = {"/", "/health", "/metrics", "/docs", "/redoc", "/openapi.json"}
 PUBLIC_PREFIXES = ("/docs/", "/redoc/")
-
-# Rutas WebSocket — siempre permitidas (el navegador no envía Origin en WS igual que en HTTP)
 WEBSOCKET_PREFIXES = ("/api/v1/states/live",)
+
+# IPs que siempre tienen acceso (el propio servidor)
+ALLOWED_IPS = {"127.0.0.1", "::1", "217.154.183.21"}
 
 
 class SecurityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
 
-        # Rutas públicas
+        # Rutas públicas siempre accesibles
         if path in PUBLIC_PATHS or any(path.startswith(p) for p in PUBLIC_PREFIXES):
             return await call_next(request)
 
-        # WebSocket — permitir siempre (la seguridad la da CORS y el token de Cesium)
+        # WebSocket — siempre permitido
         if any(path.startswith(p) for p in WEBSOCKET_PREFIXES):
+            return await call_next(request)
+
+        # IP del propio servidor — siempre permitida
+        client_ip = request.client.host if request.client else ""
+        if client_ip in ALLOWED_IPS:
             return await call_next(request)
 
         # API Key si está configurada
@@ -46,21 +52,11 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Sin origen — bloquear
-        if not origin and not referer:
-            logger.warning(
-                f"Petición bloqueada sin origen — "
-                f"path: {path} — IP: {request.client.host if request.client else 'unknown'}"
-            )
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Acceso denegado. Esta API es de uso exclusivo de flyskytrack.com"}
-            )
-
         logger.warning(
-            f"Origen no permitido — origin: '{origin}' referer: '{referer}' "
-            f"path: {path} — IP: {request.client.host if request.client else 'unknown'}"
+            f"Bloqueado — path: {path} origin: '{origin}' "
+            f"referer: '{referer}' IP: {client_ip}"
         )
         return JSONResponse(
             status_code=403,
-            content={"detail": "Origen no autorizado"}
+            content={"detail": "Acceso denegado. Esta API es de uso exclusivo de flyskytrack.com"}
         )
