@@ -42,7 +42,9 @@ async def get_flights_by_aircraft(
     flights = await opensky_client.get_flights_by_aircraft(icao24.lower(), begin, end)
     if not flights:
         raise HTTPException(status_code=404, detail=f"No se encontraron vuelos para {icao24}")
-    return {"icao24": icao24, "count": len(flights), "flights": flights}
+    # Ordenar por firstSeen descendente (más reciente primero)
+    flights_sorted = sorted(flights, key=lambda f: f.get("firstSeen", 0), reverse=True)
+    return {"icao24": icao24, "count": len(flights_sorted), "flights": flights_sorted}
 
 
 @router.get(
