@@ -11,7 +11,7 @@ CACHE_TTL = 3600  # 1 hora — los planes de vuelo no cambian frecuentemente
 
 
 class AviationStackService:
-    BASE_URL = "https://api.aviationstack.com/v1"
+    BASE_URL = "http://api.aviationstack.com/v1"
 
     async def get_flight_info(self, callsign: str) -> Optional[dict]:
         """
