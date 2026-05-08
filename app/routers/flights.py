@@ -3,6 +3,7 @@ from typing import Optional
 import time
 
 from app.services.opensky_client import opensky_client
+from app.services.aviationstack import aviationstack_service
 from app.schemas.schemas import FlightSchema, TrackSchema, TrackWaypointSchema
 
 router = APIRouter(prefix="/flights", tags=["flights"])
@@ -77,3 +78,20 @@ async def get_departures(
 
     flights = await opensky_client.get_departures_by_airport(airport.upper(), begin, end)
     return {"airport": airport.upper(), "count": len(flights), "departures": flights}
+
+
+@router.get(
+    "/info/{callsign}",
+    summary="Información enriquecida de un vuelo via AviationStack",
+    description="Devuelve origen, destino, horarios y aerolínea. Usa caché de 1h para conservar el límite de peticiones.",
+)
+async def get_flight_info(callsign: str):
+    """Busca información de vuelo por callsign ICAO o IATA."""
+    result = await aviationstack_service.get_flight_info(callsign.strip())
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No se encontró información para el vuelo {callsign}. "
+                   "Puede que el callsign no sea reconocido por AviationStack o se haya agotado el límite mensual."
+        )
+    return result

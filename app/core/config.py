@@ -45,6 +45,9 @@ class Settings(BaseSettings):
         "https://api.flyskytrack.com",
     ]
 
+    # AviationStack
+    AVIATIONSTACK_KEY: Optional[str] = None
+
     # API Key interna para el frontend
     # Configúrala como variable de entorno en Docker: API_KEY=tu_clave_secreta
     API_KEY: Optional[str] = None
